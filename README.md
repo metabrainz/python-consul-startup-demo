@@ -32,7 +32,7 @@ to build and deploy images. This means that if we need to run 6 services, we cre
 `/etc/service`, all with a `down` file in it, disabling the service.
 
 The `/etc/rc.local` file is run before runit is loaded. We use this to remove a `down` file for 
-a given service, based on environment variables
+a given service, based on environment variables. This file should have `+x` set.
 
 #### Cron
 
@@ -43,7 +43,8 @@ running an important task.
 Because of this, we start up 2 cron services. `/etc/service/cron` is present in the base image, 
 this starts the cron daemon.
 `/etc/service/cron-config` is a service which starts consul-template to render any necessary config
-files. It has no `exec` block. There is a small risk that 
+files. It has no `exec` block. There is a small risk that a cron job starts immediately before the 
+config file is rendered, but we believe that this is small enough to ignore.
 
 ### Reporting when configuration isn't complete
 
@@ -51,14 +52,16 @@ By default, the `{{ key }}` template in consul-template blocks if the key doesn'
 server. Consul-template outputs nothing when this is happening.
 
 In order to quickly identify when this is the case, we instead use `{{ keyOrDefault }}` which
-allows us to output a sentinel value if the key doesn't exist. 
-The `run-lb-command` checks if a config file contains this known sentinel and if so exits with
-a known status code.
+allows us to output a sentinel value if the key doesn't exist.
+After rendering a config file, consul-template executes `run-lb-command` which checks if the config file 
+contains this known sentinel. If so, it exits with a known status code, otherwise it runs the service.
 
 ### Reporting when applications quit
 
 If we want to report when an application has failed to start or been restarted, we use runit's `finish`
 script. This is called when `run` exits, and takes the exit status of `run` as its first argument.
+We can use this status code to determine if the process quit because of a missing config item, or if
+it was a specific status code from the program. 
 We use this to output some logging and optionally report a message to sentry.
 
 ### Debugging
